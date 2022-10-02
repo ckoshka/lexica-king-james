@@ -10,6 +10,11 @@ const reverseKeys = (obj) => {
 
     return newObj;
 }
+
+function hasNumber(myString) {
+    return /\d/.test(myString);
+  }
+
 (async () => {
     const { unpack } = await import("https://cdn.skypack.dev/msgpackr");
     const { default: fuzzy } = await import(
@@ -17,18 +22,17 @@ const reverseKeys = (obj) => {
     );
     const { ungzip } = await import('https://cdn.skypack.dev/pako');
 
-    const chunkSize = 25000;
 
     //const workers = Array.from({ length: 4 }).map(() => new Worker('./similarity_worker.js'));
 
-    const gzippedFn = name => fetch(`./kjv_1/${name}.gz`)
+    const gzippedFn = name => fetch(`./dictionaries_n5_75k/${name}.gz`)
         .then(r => r.arrayBuffer())
         .then((
             a,
         ) => new Uint8Array(a))
         .then(r => ungzip(r))
-        .then(unpack)
-        .then(reverseKeys);
+        .then(unpack);
+        //.then(reverseKeys);
 
     const createHandlers = () => {
 
@@ -39,8 +43,14 @@ const reverseKeys = (obj) => {
                 ? "already-loaded"
                 : await gzippedFn(name)
                     .then((d) => {
-                        dicts.set(name, d);
-                        const keys = Object.keys(d);
+                        const newMap = new Map();
+                        Array.from(Object.keys(d)).forEach(k => {
+                            if (!hasNumber(d[k]) && d[k].length > 0) {
+                                newMap.set(k, d[k]);
+                            }
+                        });
+                        dicts.set(name, newMap);
+                        //const keys = Object.keys(d);
                         //workers.forEach((w, i) => {
                         //    w.postMessage({data: keys.slice(i * chunkSize, (i * chunkSize) + chunkSize), dict: name, type: "addData"})
                         //});
@@ -53,28 +63,19 @@ const reverseKeys = (obj) => {
                     });
         };
 
-        const findMatch2 = async ({ query, dict }) => {
-
-            return (await Promise.all(workers.map(async w => {
-                w.postMessage({ query, dict, type: "findMatch" });
-                return new Promise(resolve => {
-                    w.onmessage = e => {
-                        resolve(e.data) // a string[]
-                    }
-                });
-            }))).reduce((a, b) => a.concat(b), []).map(word => `${word} ➤ ${dicts.get(dict)[word]}`);
-        }
 
         const findMatch = async ({ query, dict }) => {
 
-            return fuzzy.closestMatch(query.toLowerCase(), Object.keys(dicts.get(dict))
-                .slice(0, 75000), true)
+            return fuzzy.closestMatch(query.toLowerCase(), Array.from(dicts.get(dict).keys())
+                .slice(0, 50000), true)
+                .concat(fuzzy.closestMatch(query.toLowerCase(), Array.from(dicts.get(dict).keys())
+                .slice(50000, 100000), true))
                 .map(word => [
                     word, 
                     (() => {
                         let html = ``;
                         const arr = Array.from(dicts.keys())
-                            .map(k => ({ language: k, word: dicts.get(k)[word] }))
+                            .map(k => ({ language: k, word: dicts.get(k).get(word) }))
                             .filter(k => k.word !== undefined);
                         for (const subtrans of arr) {
                             html += `
