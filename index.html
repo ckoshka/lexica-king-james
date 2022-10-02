@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <script src="//unpkg.com/alpinejs" defer></script>
+  <link rel="stylesheet" href="https://unpkg.com/chota@latest">
+
+  <style>
+    body {
+      --bg-color: #720a58;
+      --bg-color-secondary: #feafdf;
+      --off-white: #f5f3ed;
+      --thin-border: 1px solid black;
+      --rounded: 5px;
+      --margin-light: 12px;
+      --default-font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    }
+
+    p {
+      margin: 5px;
+    }
+
+
+    body {
+      font-family: var(--default-font);
+    }
+
+    .search-bar {
+      background-color: var(--off-white);
+      border: var(--thin-border);
+      font-size: 1.5em;
+      font-family: "Times New Roman";
+      font-style: italic;
+      font-weight: 800;
+    }
+
+    .translation-bubble {
+      /*border: var(--thin-border);
+      font-style: italic;
+      letter-spacing: 0.05em;
+      font-family: var(--default-font);
+      border-radius: var(--rounded);*/
+      background-color: var(--off-white);
+      margin: 5px;
+    }
+
+    .translations-container {
+      border-radius: 10px;
+    }
+
+    .margin-15px {
+      padding: 15px;
+      margin: 15px;
+    }
+
+    #languages-menu {}
+  </style>
+
+  <script type="module" defer>
+    'use strict';
+
+    if (window.matchMedia &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.body.classList.add('dark');
+    }
+
+    Alpine.store('querier', {
+      worker: new Worker('./worker.js'),
+
+      async loadDict (name) {
+        this.worker.postMessage({
+          type: "loadDict",
+          name
+        });
+
+        return new Promise(resolve => {
+          this.worker.onmessage = (e) => {
+            //console.log(e.data);
+            resolve(e);
+          };
+        });
+      },
+
+      async findMatch (query, dict) {
+        this.worker.postMessage({
+          type: "findMatch",
+          query,
+          dict
+        });
+
+        return new Promise(resolve => {
+
+          this.worker.onmessage = (e) => {
+            //console.log(e.data);
+            resolve(e.data.slice(0, 20));
+          }
+        });
+      }
+    });
+
+
+  </script>
+</head>
+
+<body>
+
+  <div x-data="{ 
+      translations: [], 
+      query: '', 
+      desiredLanguage: 'abanyom', 
+      availableLanguages: [] 
+    }" x-init="availableLanguages = 
+      await fetch('./list.txt')
+      .then(r => r.text())
+      .then(t => t.split('\n'))" class="row">
+    <div class="col margin-15px">
+      <select x-ref="languageSelection" id="languages-menu" name="languages">
+        <template x-for="lang in availableLanguages">
+          <option x-bind:value="lang" x-text="lang" \>
+        </template>
+      </select>
+    </div>
+
+    <div class="is-full-width"></div>
+
+    <div class="col margin-15px">
+      <input class="search-bar" x-model="query" placeholder="type into me! i might not have everything but i will try"
+        x-init="$watch('query', async value => {
+        const el = $refs.languageSelection;
+        const selectedLang = el.options[el.selectedIndex].text;
+        await $store.querier.loadDict(selectedLang);
+        translations = [];
+        await $store.querier.findMatch(value, selectedLang)
+          .then(data => translations.push(...data));
+      })">
+    </div>
+
+    <div class="is-full-width"></div>
+
+    <div class="col row is-center translations-container margin-15px">
+      <template x-for="translation in translations">
+        <div class="card translation-bubble text-center">
+          <header>
+            <h4 x-text="translation[0]" class="is-center text-center"></h4>
+          </header>
+          <div x-html="translation[1]"></div>
+        </div>
+        <!--<div x-text="translation" class="translation-bubble margin-15px"></div>-->
+      </template>
+    </div>
+
+  </div>
+</body>
+
+</html>
